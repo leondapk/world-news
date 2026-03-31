@@ -1,0 +1,43 @@
+name: 💎 Web3 融资日报推送
+
+on:
+  schedule:
+    # 北京时间 09:00 = UTC 01:00
+    - cron: '0 1 * * *'
+    # 北京时间 15:00 = UTC 07:00
+    - cron: '0 7 * * *'
+
+  # 允许手动触发测试
+  workflow_dispatch:
+
+jobs:
+  push-funding-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Checkout 代码
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 安装依赖
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 💎 推送融资日报到飞书
+        env:
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+          FEISHU_SECRET: ${{ secrets.FEISHU_SECRET }}
+        run: |
+          python funding_report.py
+
+      - name: 📝 记录运行时间
+        if: always()
+        run: |
+          echo "运行完成于: $(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S') 北京时间"
