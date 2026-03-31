@@ -28,10 +28,11 @@ USDC_CNY_URL     = "https://query1.finance.yahoo.com/v8/finance/chart/USDCNY%3DX
 
 # RSS 新闻源
 RSS_FEEDS = {
-    "Reuters 财经": "https://feeds.reuters.com/reuters/businessNews",
-    "CNBC":         "https://feeds.content.dowjones.io/public/rss/mktgnews",
-    "Bloomberg":    "https://feeds.bloomberg.com/markets/news.rss",
-    "Yahoo财经":    "https://finance.yahoo.com/news/rssindex",
+    "WSJ":         "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+    "MarketWatch": "https://feeds.marketwatch.com/marketwatch/topstories/",
+    "CNBC":        "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",
+    "BBC Biz":     "https://feeds.bbci.co.uk/news/business/rss.xml",
+    "FT":          "https://www.ft.com/rss/home",
 }
 
 # VIP 关注人物关键词
@@ -135,24 +136,55 @@ def get_macro_data():
 
 def get_news(max_per_feed=3):
     """从 RSS 获取最新财经新闻"""
+    import re
     news_list = []
     for source, url in RSS_FEEDS.items():
         try:
             feed = feedparser.parse(url)
             for entry in feed.entries[:max_per_feed]:
-                title   = entry.get("title", "")
-                link    = entry.get("link", "")
-                summary = entry.get("summary", "")[:100]
-                published = entry.get("published", "")
+                title = entry.get("title", "")
+                title = re.sub(r'<[^>]+>', '', title)
+                title = re.sub(r'&#\d+;', ' ', title)
+                title = re.sub(r'&amp;', '&', title)
+                title = re.sub(r'&lt;', '<', title)
+                title = re.sub(r'&gt;', '>', title)
+                title = re.sub(r'&quot;', '"', title)
+                title = re.sub(r'&#x[0-9a-fA-F]+;', ' ', title)
+                title = re.sub(r'\s+', ' ', title).strip()
+                link = entry.get("link", "")
+                if not link and entry.get("links"):
+                    link = entry.links[0].get("href", "")
                 news_list.append({
-                    "source":    source,
-                    "title":     title,
-                    "link":      link,
-                    "summary":   summary,
-                    "published": published,
+                    "source": source,
+                    "title":  title,
+                    "link":   link,
                 })
         except Exception as e:
             print(f"RSS error [{source}]: {e}")
+
+    if len(news_list) < 3:
+        try:
+            for lang, q, label in [
+                ("en-US", "finance+stock+market", "Google EN"),
+                ("zh-CN", "%E8%B4%A2%E7%BB%8F", "Google CN"),
+            ]:
+                if len(news_list) >= 6:
+                    break
+                gurl = f"https://news.google.com/rss/search?q={q}&hl={lang}&gl={lang.split('-')[1]}&ceid={lang.replace('-','_')}"
+                feed = feedparser.parse(gurl)
+                for entry in feed.entries[:3]:
+                    title = re.sub(r'<[^>]+>', '', entry.get("title", ""))
+                    title = re.sub(r'&#\d+;', ' ', title)
+                    title = re.sub(r'&#x[0-9a-fA-F]+;', ' ', title)
+                    title = re.sub(r'\s+', ' ', title).strip()
+                    link = ""
+                    if entry.get("links"):
+                        link = entry.links[0].get("href", "")
+                    if title and len(title) > 5:
+                        news_list.append({"source": label, "title": title, "link": link})
+        except Exception as e:
+            print(f"Google News error: {e}")
+
     return news_list
 
 # ============================================================
@@ -163,7 +195,7 @@ def analyze_signals(news_list, stocks, crypto, macro):
     signals = []
 
     # 新闻关键词扫描
-    all_titles = " ".join([n["title"] for n in news_list])
+    all_titles = " ".join([n.get("title", "") for n in news_list])
     for label, keywords in SIGNAL_RULES.items():
         hits = [k for k in keywords if k.lower() in all_titles.lower()]
         if hits:
@@ -173,8 +205,8 @@ def analyze_signals(news_list, stocks, crypto, macro):
     vip_news = []
     for n in news_list:
         for kw in VIP_KEYWORDS:
-            if kw.lower() in n["title"].lower():
-                vip_news.append(f"• [{n['source']}] {n['title'][:60]}")
+            if kw.lower() in n.get("title", "").lower():
+                vip_news.append(f"• [{n['source']}] {n.get('title', '')[:60]}")
                 break
     if vip_news:
         signals.append("👤 VIP 人物动态：\n" + "\n".join(vip_news[:4]))
@@ -223,7 +255,12 @@ def build_feishu_card(stocks, crypto, macro, news_list, signals):
     # --- 新闻板块（取前6条）---
     news_lines = []
     for n in news_list[:6]:
-        news_lines.append(f"• [{n['source']}] [{n['title'][:55]}]({n['link']})")
+        title = n['title'][:55]
+        link = n.get('link', '')
+        if link:
+            news_lines.append(f"• [{n['source']}] [{title}]({link})")
+        else:
+            news_lines.append(f"• [{n['source']}] {title}")
 
     # --- 信号板块 ---
     signal_lines = [f"• {s}" for s in signals]
