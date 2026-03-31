@@ -108,24 +108,39 @@ def get_stock_data():
 
 def get_crypto_data():
     """BTC / ETH / SOL / BNB / POL / DOGE / ADA / XRP / TRX / LTC"""
+    # CoinGecko ID → 显示名称
+    COIN_MAP = {
+        "bitcoin":      "BTC",
+        "ethereum":     "ETH",
+        "binancecoin":  "BNB",
+        "solana":       "SOL",
+        "ripple":       "XRP",
+        "dogecoin":     "DOGE",
+        "cardano":      "ADA",
+        "tron":         "TRX",
+        "litecoin":     "LTC",
+        "matic-network":"POL",
+    }
     try:
         r = requests.get(COINGECKO_URL, timeout=10)
+        r.raise_for_status()
         data = r.json()
-        return {
-            "BTC":  (data["bitcoin"]["usd"],        data["bitcoin"]["usd_24h_change"]),
-            "ETH":  (data["ethereum"]["usd"],        data["ethereum"]["usd_24h_change"]),
-            "BNB":  (data["binancecoin"]["usd"],     data["binancecoin"]["usd_24h_change"]),
-            "SOL":  (data["solana"]["usd"],          data["solana"]["usd_24h_change"]),
-            "XRP":  (data["ripple"]["usd"],          data["ripple"]["usd_24h_change"]),
-            "DOGE": (data["dogecoin"]["usd"],        data["dogecoin"]["usd_24h_change"]),
-            "ADA":  (data["cardano"]["usd"],         data["cardano"]["usd_24h_change"]),
-            "TRX":  (data["tron"]["usd"],            data["tron"]["usd_24h_change"]),
-            "LTC":  (data["litecoin"]["usd"],        data["litecoin"]["usd_24h_change"]),
-            "POL":  (data["matic-network"]["usd"],   data["matic-network"]["usd_24h_change"]),
-        }
+        print(f"CoinGecko 返回字段：{list(data.keys())}")
+
+        result = {}
+        for coin_id, symbol in COIN_MAP.items():
+            coin_data = data.get(coin_id, {})
+            price  = coin_data.get("usd")
+            change = coin_data.get("usd_24h_change")
+            if price is not None:
+                result[symbol] = (price, change)
+            else:
+                print(f"⚠️  {symbol}（{coin_id}）数据缺失，跳过")
+        return result
     except Exception as e:
         print(f"Crypto fetch error: {e}")
         return {}
+
 
 def get_macro_data():
     """黄金、原油、美债、美元/人民币"""
